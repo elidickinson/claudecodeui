@@ -3169,7 +3169,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
 
       // Filter messages by session ID to prevent cross-session interference
       // Skip filtering for global messages that apply to all sessions
-      const globalMessageTypes = ['projects_updated', 'taskmaster-project-updated', 'session-created', 'claude-complete', 'codex-complete'];
+      const globalMessageTypes = ['projects_updated', 'taskmaster-project-updated', 'session-created', 'session-changed', 'claude-complete', 'codex-complete'];
       const isGlobalMessage = globalMessageTypes.includes(latestMessage.type);
 
       // For new sessions (currentSessionId is null), allow messages through
@@ -3185,10 +3185,10 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
           // Store it temporarily until conversation completes (prevents premature session association)
           if (latestMessage.sessionId && !currentSessionId) {
             sessionStorage.setItem('pendingSessionId', latestMessage.sessionId);
-            
+
             // Mark as system change to prevent clearing messages when session ID updates
             setIsSystemSessionChange(true);
-            
+
             // Session Protection: Replace temporary "new-session-*" identifier with real session ID
             // This maintains protection continuity - no gap between temp ID and real ID
             // The temporary session is removed and real session is marked as active
@@ -3202,6 +3202,25 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
             setPendingPermissionRequests(prev => prev.map(req => (
               req.sessionId ? req : { ...req, sessionId: latestMessage.sessionId }
             )));
+          }
+          break;
+
+        case 'session-changed':
+          // Session ID changed during resume (e.g., resume failed and SDK created new session)
+          // Update our tracking to use the new session ID
+          if (latestMessage.newSessionId) {
+            console.log('Session changed from', latestMessage.oldSessionId, 'to', latestMessage.newSessionId);
+            sessionStorage.setItem('pendingSessionId', latestMessage.newSessionId);
+            setIsSystemSessionChange(true);
+
+            if (onReplaceTemporarySession) {
+              onReplaceTemporarySession(latestMessage.newSessionId);
+            }
+
+            setPendingPermissionRequests(prev => prev.map(req => ({
+              ...req,
+              sessionId: latestMessage.newSessionId
+            })));
           }
           break;
 

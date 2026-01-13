@@ -574,29 +574,45 @@ async function queryClaudeSDK(command, options = {}, ws) {
     // Process streaming messages
     console.log('Starting async generator loop for session:', capturedSessionId || 'NEW');
     for await (const message of queryInstance) {
-      // Capture session ID from first message
-      if (message.session_id && !capturedSessionId) {
+      // Capture or update session ID from message
+      if (message.session_id) {
+        if (!capturedSessionId) {
+          // New session - capture the ID
+          capturedSessionId = message.session_id;
+          addSession(capturedSessionId, queryInstance, tempImagePaths, tempDir);
 
-        capturedSessionId = message.session_id;
-        addSession(capturedSessionId, queryInstance, tempImagePaths, tempDir);
+          // Set session ID on writer
+          if (ws.setSessionId && typeof ws.setSessionId === 'function') {
+            ws.setSessionId(capturedSessionId);
+          }
 
-        // Set session ID on writer
-        if (ws.setSessionId && typeof ws.setSessionId === 'function') {
-          ws.setSessionId(capturedSessionId);
-        }
+          // Send session-created event only once for new sessions
+          if (!sessionId && !sessionCreatedSent) {
+            sessionCreatedSent = true;
+            ws.send({
+              type: 'session-created',
+              sessionId: capturedSessionId
+            });
+          }
+        } else if (message.session_id !== capturedSessionId) {
+          // SDK returned a different session ID - this can happen if resume failed
+          // and the SDK created a new session. Update our tracking to match.
+          console.log('Session ID changed from', capturedSessionId, 'to', message.session_id);
+          removeSession(capturedSessionId);
+          capturedSessionId = message.session_id;
+          addSession(capturedSessionId, queryInstance, tempImagePaths, tempDir);
 
-        // Send session-created event only once for new sessions
-        if (!sessionId && !sessionCreatedSent) {
-          sessionCreatedSent = true;
+          if (ws.setSessionId && typeof ws.setSessionId === 'function') {
+            ws.setSessionId(capturedSessionId);
+          }
+
+          // Notify frontend of session change
           ws.send({
-            type: 'session-created',
-            sessionId: capturedSessionId
+            type: 'session-changed',
+            oldSessionId: sessionId,
+            newSessionId: capturedSessionId
           });
-        } else {
-          console.log('Not sending session-created. sessionId:', sessionId, 'sessionCreatedSent:', sessionCreatedSent);
         }
-      } else {
-        console.log('No session_id in message or already captured. message.session_id:', message.session_id, 'capturedSessionId:', capturedSessionId);
       }
 
       // Transform and send message to WebSocket
