@@ -23,6 +23,7 @@
     "url": "https://github.com/siteboon/claudecodeui/issues"
   },
   "scripts": {
+    "prepare": "test -d dist || npm run build 2>/dev/null || true",
     "postinstall": "node -e \"const p=require.resolve('node-pty').replace(/lib.*$/,'prebuilds');require('fs').readdirSync(p).filter(d=>d.startsWith('darwin')).forEach(d=>require('fs').chmodSync(p+'/'+d+'/spawn-helper',0o755))\" 2>/dev/null || true",
     "dev": "concurrently --kill-others \"npm run server\" \"npm run client\"",
     "server": "node server/index.js",
